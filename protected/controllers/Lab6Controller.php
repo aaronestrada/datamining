@@ -6,19 +6,260 @@ class Lab6Controller extends Controller {
     private $tweetWordCounterIndex = array();
 
     /**
-     * Suffix stripping method for stemming
-     * @param $word Word to be stemmed
-     * @return string Stemmed word
+     * Return vowels array
+     * @return array
      */
-    private function suffixStripping($word) {
-        if(strlen($word) > 4) {
-            $fword = substr($word, -2);
+    private function getVowels() {
+        return str_split('aeiou');
+    }
 
-            if(($fword == 'ed') || ($fword == 'ly'))
-                return substr($word, 0, strlen($word) - 2);
-            if(substr($word, -3) == 'ing')
-                return substr($word, 0, strlen($word) - 3);
+    /**
+     * Return consonants array
+     * @return array
+     */
+    private function getConsonants() {
+        return str_split('bcdfghjklmnpqrstvwxyz');
+    }
+
+    /**
+     * Count bigram sequences [C] (VC)m [V] in word
+     * @param $word Word to be counted
+     * @return int Number of found sequences
+     */
+    private function findBigramSequence($word) {
+        $vowels = $this->getVowels();
+        $consonants = $this->getConsonants();
+        $firstLetter = substr($word, 0, 1);
+
+        $initCounter = in_array($firstLetter, $consonants) ? 1 : 0;
+        $bigramCounter  = 0;
+
+        //find all the sequences VowelConsonant and count them
+        for($i = $initCounter; $i < strlen($word) - 1; $i++) {
+            $bigramSeq = str_split(substr($word, $i, 2));
+            if(in_array($bigramSeq[0], $vowels) && (in_array($bigramSeq[1], $consonants)))
+                $bigramCounter++;
         }
+        return $bigramCounter;
+    }
+
+    /**
+     * Verify if a word finishes with Consonant-Vowel-Consonant sequence
+     * @param $word Word to be checked
+     * @return bool whether if the word has a final CVC
+     */
+    private function hasTrigramCVCSequence($word) {
+        $vowels = $this->getVowels();
+        $consonants = $this->getConsonants();
+
+        if(strlen($word) >= 3) {
+            $trigram = str_split(substr($word, -3));
+
+            if ((in_array($trigram[0], $consonants) && in_array($trigram[1], $vowels)
+                    && in_array($trigram[2], $consonants)) && !in_array($trigram[2], array('w', 'x', 'y')))
+                return true;
+        }
+        return false;
+    }
+
+    /**
+     * Find if a word contains at least one vowel
+     * @param $word Word to be checked
+     * @return bool Whether the word contains a vowel or not
+     */
+    private function hasVowel($word) {
+        $vowels = $this->getVowels();
+        foreach($vowels as $vowel)
+            if(strpos($word, $vowel) != false)
+                return true;
+        return false;
+    }
+
+    /**
+     * Verify if a word finishes in consonant
+     * @param $word Word to be checked
+     * @return bool Whether the word finishes in a consonant
+     */
+    private function finishesInConsonant($word, $consonantLetter) {
+        $consonants = $this->getConsonants();
+        $lastConsonant = substr($word, -1);
+        return(in_array($lastConsonant, $consonants) && $lastConsonant == $consonantLetter);
+    }
+
+    /**
+     * Verify if a word finishes in consonant
+     * @param $word Word to be checked
+     * @return bool Whether the word finishes in a consonant
+     */
+    private function finishesInDoubleConsontant($word) {
+        $consonants = $this->getConsonants();
+
+        if(strlen($word) >= 2) {
+            $lastLetters = str_split(substr($word, -2));
+            return (in_array($lastLetters[1], $consonants) && in_array($lastLetters[0], $consonants) && ($lastLetters[0] == $lastLetters[1]));
+        }
+        return false;
+    }
+
+    /**
+     * 5-setp algorithm to transform words to base case using suffix stripping stemming
+     * @param $word Word to be stripped
+     * @return string Stripped word
+     */
+    private function suffixStrippingStemming($word) {
+        //Step 1.1 Delete SSES, IES, SS and S from word
+        $ruleList = array(
+            'sses' => 'ss',
+            'ies' => 'i',
+            'ss' => 'ss',
+            's' => ''
+        );
+
+        foreach($ruleList as $rule => $ruleTransform) {
+            if(substr($word, strlen($rule) * -1) == $rule) {
+                $word = substr($word, 0, strlen($word) - strlen($rule));
+                $word = $word . $ruleTransform;
+                break;
+            }
+        }
+
+        //Step 1.2 Remove EED, ED and ING
+        $applyNextStep = false;
+        $wordRest = substr($word, 0, strlen($word) - 3);
+        if(($this->findBigramSequence($wordRest) > 0) && (substr($word, -3) == 'eed'))
+            $word = substr($word, 0, strlen($word) - 1);
+        else {
+            $wordRest = substr($word, 0, strlen($word) - 2);
+            if (($this->hasVowel($wordRest)) && (substr($word, -2) == 'ed')) {
+                $word = substr($word, 0, strlen($word) - 2);
+                $applyNextStep = true;
+            }
+            else {
+                $wordRest = substr($word, 0, strlen($word) - 3);
+                if(($this->hasVowel($wordRest)) && (substr($word, -3) == 'ing')) {
+                    $word = substr($word, 0, strlen($word) - 3);
+                    $applyNextStep = true;
+                }
+            }
+        }
+
+        /**
+         * Step 1.3: if in prior step, ED or ING happens, apply the next step
+         * Changes AT, BL, IZ
+         */
+        if($applyNextStep) {
+            $wordEnd = substr($word, -2);
+            if(in_array($wordEnd, array('at', 'bl', 'iz')))
+                $word = $word . 'e';
+            elseif($this->finishesInDoubleConsontant($word) &&
+                !($this->finishesInConsonant($word, 's') || $this->finishesInConsonant($word, 'z') || $this->finishesInConsonant($word, 'l'))
+            ) {
+                $word = substr($word, 0, strlen($word) - 1);
+            }
+            elseif(($this->findBigramSequence($word) == 1) && ($this->hasTrigramCVCSequence($word)))
+                $word = $word . 'e';
+        }
+
+        //Step 1.4: change Y for I if word has a vowel
+        if($this->hasVowel($word) && $this->finishesInConsonant($word, 'y'))
+            $word = substr($word, 0, strlen($word) - 1) . 'i';
+
+        //Step 2: change finishes with the following rules
+        $ruleList = array(
+            'ational' => 'ate',
+            'tional' => 'tion',
+            'enci' => 'ence',
+            'anci' => 'ance',
+            'izer' => 'ize',
+            'abli' => 'able',
+            'alli' => 'al',
+            'entli' => 'ent',
+            'eli' => 'e',
+            'ousli' => 'ous',
+            'ization' => 'ize',
+            'ation' => 'ate',
+            'ator' => 'ate',
+            'alism' => 'al',
+            'iveness' => 'ive',
+            'fulness' => 'ful',
+            'ousness' => 'ous',
+            'aliti' => 'al',
+            'iviti' => 'ive',
+            'biliti' => 'ble'
+        );
+
+        foreach($ruleList as $rule => $ruleTransform) {
+            $wordPrefix = substr($word, 0, strlen($word) - strlen($rule));
+            if(($this->findBigramSequence($wordPrefix) > 0) && (substr($word, strlen($rule) * -1) == $rule)) {
+                $word = $wordPrefix . $ruleTransform;
+                break;
+            }
+        }
+
+        //Step 3: change finishes with the following rules
+        $ruleList = array(
+            'icate' => 'ic',
+            'ative' => '',
+            'alize' => 'al',
+            'iciti' => 'ic',
+            'ical' => 'ic',
+            'ful' => '',
+            'ness' => '',
+        );
+
+        foreach($ruleList as $rule => $ruleTransform) {
+            $wordPrefix = substr($word, 0, strlen($word) - strlen($rule));
+            if(($this->findBigramSequence($wordPrefix) > 0) && (substr($word, strlen($rule) * -1) == $rule)) {
+                $word = $wordPrefix . $ruleTransform;
+                break;
+            }
+        }
+
+        //Step 4: change finish of the word with the following rules
+        $ruleList = array('al', 'ance', 'ence', 'er', 'ic', 'able', 'ible', 'ant', 'ement', 'ent');
+        $foundRule = false;
+        foreach($ruleList as $rule) {
+            $wordPrefix = substr($word, 0, strlen($word) - strlen($rule));
+            if(($this->findBigramSequence($wordPrefix) > 1) && (substr($word, strlen($rule) * -1) == $rule)) {
+                $word = $wordPrefix;
+                $foundRule = true;
+                break;
+            }
+        }
+
+        if(!$foundRule) {
+            //verify ION finishing
+            $wordPrefix = substr($word, 0, strlen($word) - 3);
+            if(($this->findBigramSequence($wordPrefix) > 1) &&
+                (($this->finishesInConsonant($wordPrefix, 's')) || ($this->finishesInConsonant($wordPrefix, 't')))
+                && (substr($word, -3) == 'ion')) {
+                    $word = $wordPrefix;
+            }
+            else {
+                $ruleList = array('ou', 'ism', 'ate', 'iti', 'ous', 'ive', 'ize');
+                foreach($ruleList as $rule) {
+                    $wordPrefix = substr($word, 0, strlen($word) - strlen($rule));
+                    if(($this->findBigramSequence($wordPrefix) > 1) && (substr($word, strlen($rule) * -1) == $rule)) {
+                        $word = $wordPrefix;
+                        break;
+                    }
+                }
+            }
+        }
+
+        //Step 5.1 Changes the final E for the word
+        $wordPrefix = substr($word, 0, strlen($word) - 1);
+        $wordFinish = substr($word, -1);
+        $findBigramSequenceValue = $this->findBigramSequence($wordPrefix);
+        if(($findBigramSequenceValue > 1) && ($wordFinish == 'e'))
+            $word = $wordPrefix;
+        elseif(($findBigramSequenceValue == 1) && !($this->hasTrigramCVCSequence($wordPrefix)) && ($wordFinish == 'e'))
+            $word = $wordPrefix;
+
+        //Step 5.2 verify that word finishes in LL
+        if(($this->findBigramSequence($word) > 1) && ($this->finishesInDoubleConsontant($word)) && ($this->finishesInConsonant($word, 'l')))
+            $word = substr($word, 0, strlen($word) - 1);
+
         return $word;
     }
 
@@ -114,9 +355,18 @@ class Lab6Controller extends Controller {
     /**
      * Extract from original tweet and save in new field
      */
-    private function cleanTweets() {
-        //verify that tweet counter is in Memcache
-        if($this->getKeyFromMemcache('tweetWordCounterSet') == true) {
+    private function cleanTweets($useSuffixStemming = true) {
+        //verify that tweet counter is in Memcache and corresponds to the suffix stemming
+        $cleanProcess = true;
+        $tweetCounterSetType = $this->getKeyFromMemcache('tweetWordCounterSet');
+        if(in_array($tweetCounterSetType, array('stemming', 'nostemming'))) {
+            if(($useSuffixStemming) && ($tweetCounterSetType = 'stemming'))
+                $cleanProcess = false;
+            elseif((!$useSuffixStemming) && ($tweetCounterSetType = 'nostemming'))
+                $cleanProcess = false;
+        }
+
+        if(!$cleanProcess) {
             $this->tweetWordCounter = $this->getKeyFromMemcache('tweetWordCounter');
             $this->tweetWordCounterIndex = $this->getKeyFromMemcache('tweetWordCounterIndex');
         }
@@ -136,14 +386,24 @@ class Lab6Controller extends Controller {
                 "then", "there", "these", "they", "this", "tis", "to", "too", "twas", "us", "wants",
                 "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom", "why",
                 "will", "with", "would", "yet", "you", "your", "im", "e", "i", "o", "u", "oh", "lol",
-                "b", "c", "d", "f", "g", "h", "i", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "y", "z", "ok",
+                "i\'m", "i've",
+                "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "y", "z", "ok",
                 "bit", "ly", "com", "www", "rt", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "&", '@');
 
             //get all tweets
             $objTweet = Tweetlab6::model()->findAll();
             foreach ($objTweet as $tweet) {
+                $newTweet = array();
+                $arrCleanedTweet = explode(' ', $tweet->tweet);
+                foreach($arrCleanedTweet as $cleanedTweetWord) {
+                    $cleanedTweetWord = strtolower(trim($cleanedTweetWord));
+                    if(substr($cleanedTweetWord, 0, 4) != 'http')
+                        array_push($newTweet, $cleanedTweetWord);
+                }
+                $newTweetNoLink = implode(' ', $newTweet);
+
                 //step 1: delete symbols from tweets
-                $cleanedTweet = str_replace(array(',', '...', '.', ':', ')', '(', '?', "'", '!', '-', ";", "#", '"', '=', '[', ']', '*', '+', '/', '\\', "$"), " ", $tweet->tweet);
+                $cleanedTweet = str_replace(array(',', '...', '.', ':', ')', '(', '?', "'", '!', '-', ";", "#", '"', '=', '[', ']', '*', '+', '/', '\\', "$"), " ", $newTweetNoLink);
                 $cleanedTweet = str_replace('&lt', ' ', $cleanedTweet);
                 $cleanedTweet = str_replace('&gt', ' ', $cleanedTweet);
                 $cleanedTweet = str_replace('&amp', '&', $cleanedTweet);
@@ -152,17 +412,16 @@ class Lab6Controller extends Controller {
                 $arrNewtweet = array();
                 $arrCleanedTweet = explode(" ", $cleanedTweet);
                 foreach ($arrCleanedTweet as $cleanedTweetWord) {
-                    $cleanedTweetWord = strtolower(trim($cleanedTweetWord));
+                    if($useSuffixStemming)
+                        $cleanedTweetWord = $this->suffixStrippingStemming($cleanedTweetWord);
 
                     if ($cleanedTweetWord !== '') {
                         //step 3: check if the word exists from the forbidden words to include it as the new tweet
                         if (!in_array($cleanedTweetWord, $forbiddenWords)) {
-                            if(substr($cleanedTweetWord, 0, 4) != 'http') {
-                                if (!isset($arrNewtweet[$cleanedTweetWord]))
-                                    $arrNewtweet[$cleanedTweetWord] = 1;
-                                else
-                                    $arrNewtweet[$cleanedTweetWord]++;
-                            }
+                            if (!isset($arrNewtweet[$cleanedTweetWord]))
+                                $arrNewtweet[$cleanedTweetWord] = 1;
+                            else
+                                $arrNewtweet[$cleanedTweetWord]++;
                         }
                     }
                 }
@@ -173,7 +432,7 @@ class Lab6Controller extends Controller {
             //save calculated values into Memcache
             $this->setKeyToMemcache('tweetWordCounter', $this->tweetWordCounter);
             $this->setKeyToMemcache('tweetWordCounterIndex', $this->tweetWordCounterIndex);
-            $this->setKeyToMemcache('tweetWordCounterSet', true);
+            $this->setKeyToMemcache('tweetWordCounterSet', $useSuffixStemming ? 'stemming' : 'nostemming');
         }
     }
 
@@ -190,13 +449,16 @@ class Lab6Controller extends Controller {
     public function actionCluster() {
         //no limit in execution time
         set_time_limit(0);
+        $request = Yii::app()->request;
+
+        //parameter to use stemming process or not
+        $stemming = $request->getParam('stemming', null);
 
         //Step 1: Clean tweets
-        $this->cleanTweets();
+        $this->cleanTweets($stemming != 'true' ? false : true);
 
         //Step 2: Set K random centroids
-        $request = Yii::app()->request;
-        $clusterNumber = $request->getParam('k', 3); //K=3 default if not defined
+        $clusterNumber = $request->getParam('k', 3); //K = 3 default if not defined
         $tweetWordCounterIndex = array_keys($this->tweetWordCounter);
 
         $centroidItems = array();
@@ -282,12 +544,13 @@ class Lab6Controller extends Controller {
                 $previousError = $iterationErrorValue + 1;
 
             //Step 3.4: calculate new centroid values
-            $centroidItems = array();
 
             //verify if it is necessary to obtain new centroids based on error convergence
-            if(($previousError - $iterationErrorValue) > 0.05)
+            if(($previousError - $iterationErrorValue) > 0.05) {
+                $centroidItems = array();
                 foreach ($clusteredIndexValues as $clusteredValues)
                     array_push($centroidItems, $this->calculateNewCentroid($clusteredValues));
+            }
 
             $iterationCount++;
         } while(($previousError - $iterationErrorValue) > 0.05);
@@ -300,7 +563,19 @@ class Lab6Controller extends Controller {
             $tweetCriteria->addInCondition('id', array_values($cluster));
             $tweetCriteria->order = 'hashtag ASC';
             $tweetList = Tweetlab6::model()->findAll($tweetCriteria);
-            $clusterTweets[$clusterCount] = $tweetList;
+
+            $tweetCriteria->select = 'DISTINCT hashtag';
+            $tweetCriteria->group = 'hashtag';
+            $hashtagCount = Tweetlab6::model()->count($tweetCriteria);
+
+            //order centroid values
+            arsort($centroidItems[$clusterCount-1]);
+
+            $clusterTweets[$clusterCount] = array(
+                'tweetList' => $tweetList,
+                'hashtagCount' => $hashtagCount,
+                'centroid' => json_encode($centroidItems[$clusterCount-1])
+            );
             $clusterCount++;
         }
 
@@ -308,5 +583,14 @@ class Lab6Controller extends Controller {
             'clusterTweets' => $clusterTweets,
             'iterationErrorList' => $iterationErrorList
         ));
+    }
+
+    /**
+     * Process suffix stripping stemming to a word
+     */
+    public function actionSuffix() {
+        $request = Yii::app()->getRequest();
+        $suffixWord = $request->getParam('word', '');
+        echo $this->suffixStrippingStemming($suffixWord);
     }
 }
