@@ -525,15 +525,27 @@ class Lab6Controller extends Controller {
             //free tweet distance matrix
             unset($tweetDistanceMatrix);
 
-            //Step 3.3: calculate squared error criterion
+            //Step 3.3: calculate new centroid values
+            $centroidItems = array();
+            foreach ($clusteredIndexValues as $clusteredValues)
+                array_push($centroidItems, $this->calculateNewCentroid($clusteredValues));
+
+            //Step 3.4: calculate squared error criterion
             $previousError = $iterationErrorValue; //save error from previous iteration
 
+            //cycle to every cluster to find the error sum(sum(|p-centroid|^2))
             $iterationErrorValue = 0;
-            foreach($clusteredDistanceValues as $clusterDistance) {
+            $clusterIndex = 0;
+            foreach($centroidItems as $centroidObject) {
                 $clusterErrorValue = 0;
-                foreach($clusterDistance as $distanceValue)
-                    $clusterErrorValue = $clusterErrorValue + pow($distanceValue, 2);
+                $clusteredValues = $clusteredIndexValues[$clusterIndex];
+                foreach($clusteredValues as $clusterTweetIndex) {
+                    $tweetToObject = isset($this->tweetWordCounter[$clusterTweetIndex]) ? $this->tweetWordCounter[$clusterTweetIndex] : array();
+                    $tweetCentroidDistance = $this->tweetMinkowskiDistance($tweetToObject, $centroidObject, 2);
+                    $clusterErrorValue = $clusterErrorValue + pow($tweetCentroidDistance, 2);
+                }
                 $iterationErrorValue = $iterationErrorValue + $clusterErrorValue;
+                $clusterIndex++; //update cluster index
             }
 
             //save iteration error in list
@@ -542,15 +554,6 @@ class Lab6Controller extends Controller {
             //verify iteration to execute at least one more time
             if($iterationCount == 1)
                 $previousError = $iterationErrorValue + 1;
-
-            //Step 3.4: calculate new centroid values
-
-            //verify if it is necessary to obtain new centroids based on error convergence
-            if(($previousError - $iterationErrorValue) > 0.05) {
-                $centroidItems = array();
-                foreach ($clusteredIndexValues as $clusteredValues)
-                    array_push($centroidItems, $this->calculateNewCentroid($clusteredValues));
-            }
 
             $iterationCount++;
         } while(($previousError - $iterationErrorValue) > 0.05);
